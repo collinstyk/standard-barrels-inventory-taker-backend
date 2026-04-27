@@ -1,0 +1,203 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -- ENUMS --
+
+enum UserRole {
+  ADMIN
+  STAFF
+  AUDITOR
+}
+
+enum TransactionStatus {
+  DRAFT
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum StockChangeType {
+  SALE
+  PURCHASE
+  ADJUSTMENT
+  DAMAGE
+  RETURN
+}
+
+enum PaymentStatus {
+  FULLY_PAID
+  PARTLY_PAID
+  NOT_PAID
+}
+
+enum DeliveryStatus {
+  FULLY_DELIVERED
+  PARTLY_DELIVERED
+  NOT_DELIVERED
+}
+
+enum ReceivingStatus {
+  FULLY_RECEIVED
+  PARTLY_RECEIVED
+  NOT_RECEIVED
+}
+
+// -- MODELS --
+
+model User {
+  id    String   @id @default(uuid())
+  email String   @unique
+  name  String
+  role  UserRole
+
+  sales     SaleOrder[]
+  purchases PurchaseOrder[]
+}
+
+model Contact {
+  id         String          @id @default(uuid())
+  name       String
+  purchases  SaleOrder[]
+  sales      PurchaseOrder[]
+  isSupplier Boolean         @default(false)
+  isBuyer    Boolean         @default(false)
+}
+
+model Category {
+  id      Int       @id @default(autoincrement())
+  name    String
+  product Product[]
+}
+
+model Product {
+  id              String         @id @default(uuid())
+  name            String
+  baseUnit        String
+  categoryId      Int
+  category        Category       @relation(fields: [categoryId], references: [id])
+  units           ProductUnit[]
+  quantityInStock Int
+  saleItems       SaleItem[]
+  purchaseItems   PurchaseItem[]
+
+  stockLevels StockLevel[]
+  stockLogs   StockLog[]
+}
+
+model ProductUnit {
+  id            Int            @id @default(autoincrement())
+  name          String
+  multiplier    Int
+  price         Decimal
+  sku           String
+  productId     String
+  product       Product        @relation(fields: [productId], references: [id])
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+}
+
+model Warehouse {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  location    String?
+  stockLevels StockLevel[]
+  stockLogs   StockLog[]
+}
+
+model StockLevel {
+  id          Int       @id @default(autoincrement())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouseId Int
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity    Int       @default(0)
+
+  @@unique([productId, warehouseId])
+}
+
+model SaleOrder {
+  id                Int               @id @default(autoincrement())
+  buyerId           String?
+  buyer             Contact?          @relation(fields: [buyerId], references: [id])
+  sellerId          String
+  seller            User              @relation(fields: [sellerId], references: [id])
+  items             SaleItem[]
+  transactionStatus TransactionStatus
+  paymentStatus     PaymentStatus
+  deliveryStatus    DeliveryStatus
+  stockLogs         StockLog[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model PurchaseOrder {
+  id                Int               @id @default(autoincrement())
+  supplierId        String?
+  supplier          Contact?          @relation(fields: [supplierId], references: [id])
+  receiverId        String
+  receiver          User              @relation(fields: [receiverId], references: [id])
+  items             PurchaseItem[]
+  transactionStatus TransactionStatus
+  paymentStatus     PaymentStatus
+  receivingStatus   ReceivingStatus
+  stockLogs         StockLog[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model SaleItem {
+  id                Int         @id @default(autoincrement())
+  saleId            Int
+  sale              SaleOrder   @relation(fields: [saleId], references: [id])
+  productId         String
+  product           Product     @relation(fields: [productId], references: [id])
+  quantityOrdered   Int
+  quantityDelivered Int         @default(0)
+  unitId            Int
+  unit              ProductUnit @relation(fields: [unitId], references: [id])
+  unitPrice         Decimal     @db.Decimal(10, 2)
+  totalPrice        Decimal     @db.Decimal(10, 2)
+}
+
+model PurchaseItem {
+  id               Int           @id @default(autoincrement())
+  purchaseId       Int
+  purchase         PurchaseOrder @relation(fields: [purchaseId], references: [id])
+  productId        String
+  product          Product       @relation(fields: [productId], references: [id])
+  quantityOrdered  Int
+  quantityReceived Int
+  unitId           Int
+  unit             ProductUnit   @relation(fields: [unitId], references: [id])
+
+  // quantityPerUnit   Int
+
+  unitPrice  Decimal @db.Decimal(10, 2)
+  totalPrice Decimal @db.Decimal(10, 2)
+}
+
+model StockLog {
+  id              Int             @id @default(autoincrement())
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id])
+  warehouseId     Int
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
+  quantityChange  Int
+  type            StockChangeType
+  saleOrderId     Int?
+  saleOrder       SaleOrder?      @relation(fields: [saleOrderId], references: [id])
+  purchaseOrderId Int?
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  createdAt       DateTime        @default(now())
+}
