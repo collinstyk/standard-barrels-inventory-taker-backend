@@ -1,5 +1,5 @@
 import { Request, NextFunction, Response } from "express";
-import { prisma } from "../prisma";
+import prisma from "../prisma";
 import { catchAsync } from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import z from "zod";
