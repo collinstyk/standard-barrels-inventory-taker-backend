@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { catchAsync } from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { prisma } from "../app";
+import { prisma } from "../prisma";
 import z from "zod";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/client";
 import { Decimal } from "../generated/prisma/internal/prismaNamespace";
