@@ -2,9 +2,18 @@
   "name": "standard-barrels-inventory-tracker-backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --no-file-parallelism --maxWorkers=1",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration --no-file-parallelism --maxWorkers=1",
+    "test:all": "vitest run --no-file-parallelism --maxWorkers=1",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').writeFileSync('dist/package.json', JSON.stringify({ type: 'commonjs' }))\"",
+    "bootstrap:admin": "tsx scripts/bootstrapAdminCli.ts",
+    "start": "node dist/index.js",
+    "studio": "prisma studio"
   },
   "keywords": [],
   "author": "Chidozie Collins Achusiogu",
@@ -13,15 +22,24 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.7.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.1",
     "pg": "^8.20.0",
     "zod": "^4.4.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/morgan": "^1.9.10",
     "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.2.1",
     "prisma": "^7.7.0",
-    "tsx": "^4.21.0"
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

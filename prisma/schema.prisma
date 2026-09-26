@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -12,12 +7,493 @@ datasource db {
   provider = "postgresql"
 }
 
-// -- ENUMS --
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  name              String
+  password          String
+  role              UserRole
+  purchases         PurchaseOrder[]    @relation("WarehouseReceiver")
+  sales             SaleOrder[]        @relation("Seller")
+  inventoryPostings InventoryPosting[] @relation("PostingPerformedBy")
+  stockMovements    StockMovement[]    @relation("MovementPerformedBy")
+  purchaseReceipts  PurchaseReceipt[]  @relation("ReceiptReceivedBy")
+  purchaseReturns   PurchaseReturn[]   @relation("PurchaseReturnProcessedBy")
+  saleReturns       SaleReturn[]       @relation("SaleReturnProcessedBy")
+  returnInspections ReturnInspection[] @relation("ReturnInspectionInspector")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id         String          @id @default(uuid())
+  name       String
+  isSupplier Boolean         @default(false)
+  isBuyer    Boolean         @default(false)
+  sales      PurchaseOrder[]
+  purchases  SaleOrder[]
+}
+
+model Category {
+  id      String    @id @default(uuid())
+  name    String
+  product Product[]
+}
+
+model Product {
+  id               String           @id @default(uuid())
+  name             String
+  baseUnit         String
+  categoryId       String
+  quantityInStock  Int
+  reorderPoint     Int              @default(0)
+  category         Category         @relation(fields: [categoryId], references: [id])
+  units            ProductUnit[]
+  purchaseItems    PurchaseItem[]
+  saleItems        SaleItem[]
+  stockLevels      StockLevel[]
+  stockLogs        StockLog[]
+  inventoryBatches InventoryBatch[]
+  stockMovementsV2 StockMovement[]
+}
+
+model ProductUnit {
+  id            Int            @id @default(autoincrement())
+  name          String
+  multiplier    Int
+  price         Decimal
+  sku           String         @unique
+  productId     String
+  product       Product        @relation(fields: [productId], references: [id])
+  purchaseItems PurchaseItem[]
+  saleItems     SaleItem[]
+}
+
+model Warehouse {
+  id                        Int                   @id @default(autoincrement())
+  name                      String                @unique
+  location                  String?
+  stockLevels               StockLevel[]
+  stockLogs                 StockLog[]
+  inventoryBatches          InventoryBatch[]
+  purchaseReceiptItems      PurchaseReceiptItem[] @relation("ReceiptItemWarehouse")
+  sourceSaleItems           SaleItem[]            @relation("SaleItemSourceWarehouse")
+  saleItemFulfillments      SaleItemFulfillment[]
+  purchaseReturnItems       PurchaseReturnItem[]  @relation("PurchaseReturnSourceWarehouse")
+  saleReturnItems           SaleReturnItem[]      @relation("SaleReturnDestinationWarehouse")
+  returnInspections         ReturnInspection[]    @relation("InspectionFinalWarehouse")
+  stockMovements            StockMovement[]       @relation("MovementWarehouse")
+  sourceStockMovements      StockMovement[]       @relation("MovementSourceWarehouse")
+  destinationStockMovements StockMovement[]       @relation("MovementDestinationWarehouse")
+}
+
+model StockLevel {
+  id          Int       @id @default(autoincrement())
+  productId   String
+  warehouseId Int
+  quantity    Int       @default(0)
+  expiryDate  DateTime?
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId, expiryDate])
+}
+
+model SaleOrder {
+  id                    Int               @id @default(autoincrement())
+  requestIdempotencyKey String?           @unique
+  requestFingerprint    String?
+  buyerId               String?
+  sellerId              String
+  transactionStatus     TransactionStatus @default(PENDING)
+  paymentStatus         PaymentStatus
+  deliveryStatus        DeliveryStatus
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  amountPaid            Decimal           @db.Decimal(10, 2)
+  extraCost             Decimal           @default(0) @db.Decimal(10, 2)
+  totalSaleAmount       Decimal           @db.Decimal(10, 2)
+  items                 SaleItem[]
+  buyer                 Contact?          @relation(fields: [buyerId], references: [id])
+  seller                User              @relation("Seller", fields: [sellerId], references: [id])
+  stockLogs             StockLog[]
+  inventoryPosting      InventoryPosting? @relation("SaleActivationPosting")
+  saleReturns           SaleReturn[]
+}
+
+model PurchaseOrder {
+  id                    Int               @id @default(autoincrement())
+  requestIdempotencyKey String?           @unique
+  requestFingerprint    String?
+  supplierId            String?
+  receiverId            String
+  transactionStatus     TransactionStatus
+  paymentStatus         PaymentStatus
+  receivingStatus       ReceivingStatus
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  amountPaid            Decimal           @db.Decimal(10, 2)
+  extraCost             Decimal           @default(0) @db.Decimal(10, 2)
+  totalPurchaseCost     Decimal           @db.Decimal(10, 2)
+  items                 PurchaseItem[]
+  receiver              User              @relation("WarehouseReceiver", fields: [receiverId], references: [id])
+  supplier              Contact?          @relation(fields: [supplierId], references: [id])
+  stockLogs             StockLog[]
+  receipts              PurchaseReceipt[]
+  purchaseReturns       PurchaseReturn[]
+}
+
+model SaleItem {
+  id                     Int                   @id @default(autoincrement())
+  saleId                 Int
+  productId              String
+  quantityOrdered        Int
+  quantityDelivered      Int                   @default(0)
+  unitId                 Int
+  unitPrice              Decimal               @db.Decimal(10, 2)
+  totalPrice             Decimal               @db.Decimal(10, 2)
+  sourceWarehouseId      Int?
+  unitMultiplierSnapshot Int?
+  confirmedUnitSalePrice Decimal?              @db.Decimal(18, 4)
+  product                Product               @relation(fields: [productId], references: [id])
+  sale                   SaleOrder             @relation(fields: [saleId], references: [id])
+  unit                   ProductUnit           @relation(fields: [unitId], references: [id])
+  sourceWarehouse        Warehouse?            @relation("SaleItemSourceWarehouse", fields: [sourceWarehouseId], references: [id])
+  allocations            SaleAllocation[]
+  fulfillments           SaleItemFulfillment[]
+  returnItems            SaleReturnItem[]
+
+  @@index([sourceWarehouseId])
+}
+
+model SaleItemFulfillment {
+  id                     Int              @id @default(autoincrement())
+  saleItemId             Int
+  warehouseId            Int
+  quantityInOrderUnit    Int
+  unitMultiplierSnapshot Int
+  quantityBase           Int
+  createdAt              DateTime         @default(now())
+  saleItem               SaleItem         @relation(fields: [saleItemId], references: [id])
+  warehouse              Warehouse        @relation(fields: [warehouseId], references: [id])
+  allocations            SaleAllocation[]
+
+  @@unique([saleItemId, warehouseId])
+  @@index([saleItemId])
+  @@index([warehouseId])
+}
+
+model PurchaseItem {
+  id                     Int                   @id @default(autoincrement())
+  purchaseId             Int
+  productId              String
+  quantityOrdered        Int
+  quantityReceived       Int
+  unitId                 Int
+  unitPrice              Decimal               @db.Decimal(10, 2)
+  totalPrice             Decimal               @db.Decimal(10, 2)
+  unitMultiplierSnapshot Int?
+  agreedUnitCost         Decimal?              @db.Decimal(18, 4)
+  product                Product               @relation(fields: [productId], references: [id])
+  purchase               PurchaseOrder         @relation(fields: [purchaseId], references: [id])
+  unit                   ProductUnit           @relation(fields: [unitId], references: [id])
+  receiptItems           PurchaseReceiptItem[]
+  returnItems            PurchaseReturnItem[]
+}
+
+model StockLog {
+  id              Int             @id @default(autoincrement())
+  productId       String
+  warehouseId     Int
+  quantityChange  Int
+  type            StockChangeType
+  saleOrderId     Int?
+  purchaseOrderId Int?
+  createdAt       DateTime        @default(now())
+  product         Product         @relation(fields: [productId], references: [id])
+  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  saleOrder       SaleOrder?      @relation(fields: [saleOrderId], references: [id])
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
+}
+
+model InventoryBatch {
+  id                    String               @id @default(uuid())
+  productId             String
+  warehouseId           Int
+  expiryDate            DateTime?            @db.Date
+  receivedAt            DateTime
+  quantityOnHandBase    Int
+  disposition           BatchDisposition     @default(SELLABLE)
+  purchaseReceiptItemId Int?
+  saleReturnItemId      Int?
+  sourceBatchId         String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  product               Product              @relation(fields: [productId], references: [id])
+  warehouse             Warehouse            @relation(fields: [warehouseId], references: [id])
+  purchaseReceiptItem   PurchaseReceiptItem? @relation(fields: [purchaseReceiptItemId], references: [id])
+  saleReturnItem        SaleReturnItem?      @relation(fields: [saleReturnItemId], references: [id])
+  sourceBatch           InventoryBatch?      @relation("BatchDerivation", fields: [sourceBatchId], references: [id])
+  derivedBatches        InventoryBatch[]     @relation("BatchDerivation")
+  sourceInspections     ReturnInspection[]   @relation("InspectionSourceBatch")
+  destinationInspection ReturnInspection?    @relation("InspectionDestinationBatch")
+  allocations           SaleAllocation[]
+  movements             StockMovement[]
+  purchaseReturnItems   PurchaseReturnItem[]
+
+  @@index([productId, warehouseId, disposition])
+  @@index([productId, warehouseId, disposition, expiryDate, receivedAt])
+  @@index([productId, warehouseId, disposition, receivedAt])
+  @@index([expiryDate])
+  @@index([sourceBatchId])
+  @@index([purchaseReceiptItemId])
+  @@index([saleReturnItemId])
+}
+
+model InventoryPosting {
+  id                 String            @id @default(uuid())
+  idempotencyKey     String            @unique
+  requestFingerprint String?
+  kind               PostingKind
+  status             PostingStatus     @default(POSTED)
+  performedById      String
+  postedAt           DateTime          @default(now())
+  notes              String?
+  purchaseReceiptId  Int?              @unique
+  saleOrderId        Int?              @unique
+  purchaseReturnId   Int?              @unique
+  saleReturnId       Int?              @unique
+  returnInspectionId Int?              @unique
+  reversalOfId       String?           @unique
+  performedBy        User              @relation("PostingPerformedBy", fields: [performedById], references: [id])
+  purchaseReceipt    PurchaseReceipt?  @relation(fields: [purchaseReceiptId], references: [id])
+  saleOrder          SaleOrder?        @relation("SaleActivationPosting", fields: [saleOrderId], references: [id])
+  purchaseReturn     PurchaseReturn?   @relation(fields: [purchaseReturnId], references: [id])
+  saleReturn         SaleReturn?       @relation(fields: [saleReturnId], references: [id])
+  returnInspection   ReturnInspection? @relation(fields: [returnInspectionId], references: [id])
+  reversalOf         InventoryPosting? @relation("PostingReversal", fields: [reversalOfId], references: [id])
+  reversedBy         InventoryPosting? @relation("PostingReversal")
+  movements          StockMovement[]
+
+  @@index([performedById, postedAt])
+  @@index([kind, postedAt])
+}
+
+model StockMovement {
+  id                     String            @id @default(uuid())
+  postingId              String
+  sequence               Int
+  type                   StockMovementType
+  productId              String
+  batchId                String
+  warehouseId            Int
+  sourceWarehouseId      Int?
+  destinationWarehouseId Int?
+  quantityChangeBase     Int
+  performedById          String
+  adjustmentReason       String?
+  notes                  String?
+  createdAt              DateTime          @default(now())
+  posting                InventoryPosting  @relation(fields: [postingId], references: [id])
+  product                Product           @relation(fields: [productId], references: [id])
+  batch                  InventoryBatch    @relation(fields: [batchId], references: [id])
+  warehouse              Warehouse         @relation("MovementWarehouse", fields: [warehouseId], references: [id])
+  sourceWarehouse        Warehouse?        @relation("MovementSourceWarehouse", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse   Warehouse?        @relation("MovementDestinationWarehouse", fields: [destinationWarehouseId], references: [id])
+  performedBy            User              @relation("MovementPerformedBy", fields: [performedById], references: [id])
+
+  @@unique([postingId, sequence])
+  @@index([batchId, createdAt])
+  @@index([productId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([sourceWarehouseId, createdAt])
+  @@index([destinationWarehouseId, createdAt])
+  @@index([performedById, createdAt])
+}
+
+model PurchaseReceipt {
+  id                 Int                   @id @default(autoincrement())
+  purchaseOrderId    Int
+  idempotencyKey     String                @unique
+  requestFingerprint String
+  status             ReceiptStatus         @default(DRAFT)
+  receivedById       String
+  receivedAt         DateTime
+  createdAt          DateTime              @default(now())
+  postedAt           DateTime?
+  notes              String?
+  purchaseOrder      PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  receivedBy         User                  @relation("ReceiptReceivedBy", fields: [receivedById], references: [id])
+  items              PurchaseReceiptItem[]
+  posting            InventoryPosting?
+
+  @@index([purchaseOrderId, status])
+  @@index([receivedById, receivedAt])
+}
+
+model PurchaseReceiptItem {
+  id                  Int              @id @default(autoincrement())
+  receiptId           Int
+  purchaseItemId      Int
+  warehouseId         Int
+  quantityInOrderUnit Int
+  unitMultiplier      Int
+  quantityBase        Int
+  actualUnitCost      Decimal          @db.Decimal(18, 4)
+  expiryDate          DateTime?        @db.Date
+  receipt             PurchaseReceipt  @relation(fields: [receiptId], references: [id])
+  purchaseItem        PurchaseItem     @relation(fields: [purchaseItemId], references: [id])
+  warehouse           Warehouse        @relation("ReceiptItemWarehouse", fields: [warehouseId], references: [id])
+  inventoryBatches    InventoryBatch[]
+
+  @@index([receiptId])
+  @@index([purchaseItemId])
+  @@index([warehouseId, expiryDate])
+}
+
+model SaleAllocation {
+  id            Int                  @id @default(autoincrement())
+  saleItemId    Int
+  fulfillmentId Int?
+  batchId       String
+  quantityBase  Int
+  createdAt     DateTime             @default(now())
+  saleItem      SaleItem             @relation(fields: [saleItemId], references: [id])
+  fulfillment   SaleItemFulfillment? @relation(fields: [fulfillmentId], references: [id])
+  batch         InventoryBatch       @relation(fields: [batchId], references: [id])
+
+  @@unique([saleItemId, batchId])
+  @@index([saleItemId])
+  @@index([fulfillmentId])
+  @@index([batchId])
+}
+
+model PurchaseReturn {
+  id                 Int                  @id @default(autoincrement())
+  originalPurchaseId Int
+  idempotencyKey     String               @unique
+  requestFingerprint String?
+  postFingerprint    String?
+  status             ReturnStatus         @default(DRAFT)
+  processedById      String
+  refundAmount       Decimal              @default(0) @db.Decimal(18, 2)
+  reason             String?
+  notes              String?
+  createdAt          DateTime             @default(now())
+  postedAt           DateTime?
+  originalPurchase   PurchaseOrder        @relation(fields: [originalPurchaseId], references: [id])
+  processedBy        User                 @relation("PurchaseReturnProcessedBy", fields: [processedById], references: [id])
+  items              PurchaseReturnItem[]
+  posting            InventoryPosting?
+
+  @@index([originalPurchaseId, status])
+  @@index([processedById, createdAt])
+}
+
+model PurchaseReturnItem {
+  id                     Int            @id @default(autoincrement())
+  purchaseReturnId       Int
+  originalPurchaseItemId Int
+  sourceBatchId          String
+  sourceWarehouseId      Int
+  quantityInOrderUnit    Int
+  unitMultiplier         Int
+  quantityBase           Int
+  refundedUnitCost       Decimal?       @db.Decimal(18, 4)
+  purchaseReturn         PurchaseReturn @relation(fields: [purchaseReturnId], references: [id])
+  originalPurchaseItem   PurchaseItem   @relation(fields: [originalPurchaseItemId], references: [id])
+  sourceBatch            InventoryBatch @relation(fields: [sourceBatchId], references: [id])
+  sourceWarehouse        Warehouse      @relation("PurchaseReturnSourceWarehouse", fields: [sourceWarehouseId], references: [id])
+
+  @@index([purchaseReturnId])
+  @@index([originalPurchaseItemId])
+  @@index([sourceBatchId])
+  @@index([sourceWarehouseId])
+}
+
+model SaleReturn {
+  id                 Int               @id @default(autoincrement())
+  originalSaleId     Int
+  idempotencyKey     String            @unique
+  requestFingerprint String?
+  receiveFingerprint String?
+  status             ReturnStatus      @default(DRAFT)
+  processedById      String
+  refundAmount       Decimal           @default(0) @db.Decimal(18, 2)
+  reason             String?
+  notes              String?
+  createdAt          DateTime          @default(now())
+  postedAt           DateTime?
+  originalSale       SaleOrder         @relation(fields: [originalSaleId], references: [id])
+  processedBy        User              @relation("SaleReturnProcessedBy", fields: [processedById], references: [id])
+  items              SaleReturnItem[]
+  posting            InventoryPosting?
+
+  @@index([originalSaleId, status])
+  @@index([processedById, createdAt])
+}
+
+model SaleReturnItem {
+  id                     Int                @id @default(autoincrement())
+  saleReturnId           Int
+  originalSaleItemId     Int
+  destinationWarehouseId Int?
+  quantityInOrderUnit    Int
+  unitMultiplier         Int
+  quantityBase           Int
+  expiryDate             DateTime?          @db.Date
+  condition              ReturnCondition    @default(QUARANTINED)
+  refundedUnitPrice      Decimal?           @db.Decimal(18, 4)
+  saleReturn             SaleReturn         @relation(fields: [saleReturnId], references: [id])
+  originalSaleItem       SaleItem           @relation(fields: [originalSaleItemId], references: [id])
+  destinationWarehouse   Warehouse?         @relation("SaleReturnDestinationWarehouse", fields: [destinationWarehouseId], references: [id])
+  inventoryBatches       InventoryBatch[]
+  inspections            ReturnInspection[]
+
+  @@index([saleReturnId])
+  @@index([originalSaleItemId])
+  @@index([destinationWarehouseId, condition])
+}
+
+model ReturnInspection {
+  id                    Int                   @id @default(autoincrement())
+  idempotencyKey        String?               @unique
+  requestFingerprint    String?
+  saleReturnItemId      Int
+  sourceBatchId         String?
+  destinationBatchId    String?               @unique
+  finalWarehouseId      Int?
+  quantityBase          Int?
+  inspectorId           String
+  inspectedAt           DateTime
+  packagingIntact       InspectionCheckResult
+  sealIntact            InspectionCheckResult
+  correctProduct        InspectionCheckResult
+  correctQuantity       InspectionCheckResult
+  expiryChecked         InspectionCheckResult
+  visibleDamage         InspectionCheckResult
+  returnReasonConfirmed InspectionCheckResult
+  finalCondition        ReturnCondition
+  notes                 String
+  createdAt             DateTime              @default(now())
+  saleReturnItem        SaleReturnItem        @relation(fields: [saleReturnItemId], references: [id])
+  sourceBatch           InventoryBatch?       @relation("InspectionSourceBatch", fields: [sourceBatchId], references: [id])
+  destinationBatch      InventoryBatch?       @relation("InspectionDestinationBatch", fields: [destinationBatchId], references: [id])
+  finalWarehouse        Warehouse?            @relation("InspectionFinalWarehouse", fields: [finalWarehouseId], references: [id])
+  inspector             User                  @relation("ReturnInspectionInspector", fields: [inspectorId], references: [id])
+  posting               InventoryPosting?
+
+  @@index([saleReturnItemId, inspectedAt])
+  @@index([sourceBatchId, inspectedAt])
+  @@index([inspectorId, inspectedAt])
+}
 
 enum UserRole {
   ADMIN
-  STAFF
   AUDITOR
+  MANAGER
+  STAFF
 }
 
 enum TransactionStatus {
@@ -32,7 +508,10 @@ enum StockChangeType {
   PURCHASE
   ADJUSTMENT
   DAMAGE
+  EXPIRED
   RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
 }
 
 enum PaymentStatus {
@@ -53,156 +532,73 @@ enum ReceivingStatus {
   NOT_RECEIVED
 }
 
-// -- MODELS --
-
-model User {
-  id    String   @id @default(uuid())
-  email String   @unique
-  name  String
-  role  UserRole
-
-  sales     SaleOrder[]
-  purchases PurchaseOrder[]
+enum BatchDisposition {
+  SELLABLE
+  DAMAGED
+  QUARANTINED
+  EXPIRED
 }
 
-model Contact {
-  id         String          @id @default(uuid())
-  name       String
-  purchases  SaleOrder[]
-  sales      PurchaseOrder[]
-  isSupplier Boolean         @default(false)
-  isBuyer    Boolean         @default(false)
+enum PostingKind {
+  PURCHASE_RECEIPT
+  SALE_ISSUE
+  CUSTOMER_RETURN
+  SUPPLIER_RETURN
+  TRANSFER
+  ADJUSTMENT
+  REVERSAL
+  MIGRATION_OPENING_BALANCE
+  RETURN_INSPECTION_RECLASSIFICATION
 }
 
-model Category {
-  id      String         @id @default(uuid())
-  name    String
-  product Product[]
+enum PostingStatus {
+  POSTED
+  REVERSED
 }
 
-model Product {
-  id              String         @id @default(uuid())
-  name            String
-  baseUnit        String
-  categoryId      String
-  category        Category       @relation(fields: [categoryId], references: [id])
-  units           ProductUnit[]
-  quantityInStock Int
-  saleItems       SaleItem[]
-  purchaseItems   PurchaseItem[]
-
-  stockLevels StockLevel[]
-  stockLogs   StockLog[]
+enum StockMovementType {
+  PURCHASE_RECEIPT
+  SALE_ISSUE
+  CUSTOMER_RETURN_QUARANTINED
+  CUSTOMER_RETURN_SELLABLE
+  CUSTOMER_RETURN_DAMAGED
+  CUSTOMER_RETURN_REJECTED
+  SUPPLIER_RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  POSITIVE_ADJUSTMENT
+  NEGATIVE_ADJUSTMENT
+  EXPIRY_RECLASSIFICATION
+  RETURN_INSPECTION_RECLASSIFICATION
+  REVERSAL
+  MIGRATION_OPENING_BALANCE
 }
 
-model ProductUnit {
-  id            Int            @id @default(autoincrement())
-  name          String
-  multiplier    Int
-  price         Decimal
-  sku           String
-  productId     String
-  product       Product        @relation(fields: [productId], references: [id])
-  saleItems     SaleItem[]
-  purchaseItems PurchaseItem[]
+enum ReceiptStatus {
+  DRAFT
+  POSTED
+  REVERSED
 }
 
-model Warehouse {
-  id          Int          @id @default(autoincrement())
-  name        String       @unique
-  location    String?
-  stockLevels StockLevel[]
-  stockLogs   StockLog[]
+enum ReturnStatus {
+  DRAFT
+  RECEIVED
+  PARTLY_INSPECTED
+  INSPECTED
+  POSTED
+  REVERSED
+  CANCELLED
 }
 
-model StockLevel {
-  id          Int       @id @default(autoincrement())
-  productId   String
-  product     Product   @relation(fields: [productId], references: [id])
-  warehouseId Int
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-  quantity    Int       @default(0)
-
-  @@unique([productId, warehouseId])
+enum ReturnCondition {
+  QUARANTINED
+  SELLABLE
+  DAMAGED
+  REJECTED
 }
 
-model SaleOrder {
-  id                Int               @id @default(autoincrement())
-  buyerId           String?
-  buyer             Contact?          @relation(fields: [buyerId], references: [id])
-  sellerId          String
-  seller            User              @relation(fields: [sellerId], references: [id])
-  items             SaleItem[]
-  transactionStatus TransactionStatus @default(PENDING)
-  paymentStatus     PaymentStatus
-  deliveryStatus    DeliveryStatus
-  totalSaleAmount   Decimal     @db.Decimal(10, 2)
-  amountPaid         Decimal     @db.Decimal(10, 2)
-  stockLogs         StockLog[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-}
-
-model PurchaseOrder {
-  id                Int               @id @default(autoincrement())
-  supplierId        String?
-  supplier          Contact?          @relation(fields: [supplierId], references: [id])
-  receiverId        String
-  receiver          User              @relation(fields: [receiverId], references: [id])
-  items             PurchaseItem[]
-  transactionStatus TransactionStatus
-  paymentStatus     PaymentStatus
-  receivingStatus   ReceivingStatus
-  extraCost         Decimal           @db.Decimal(10, 2) @default(0)
-  totalPurchaseCost Decimal           @db.Decimal(10, 2)
-  amountPaid        Decimal           @db.Decimal(10, 2)
-  stockLogs         StockLog[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-}
-
-model SaleItem {
-  id                Int         @id @default(autoincrement())
-  saleId            Int
-  sale              SaleOrder   @relation(fields: [saleId], references: [id])
-  productId         String
-  product           Product     @relation(fields: [productId], references: [id])
-  quantityOrdered   Int
-  quantityDelivered Int         @default(0)
-  unitId            Int
-  unit              ProductUnit @relation(fields: [unitId], references: [id])
-  unitPrice         Decimal     @db.Decimal(10, 2)
-  totalPrice        Decimal     @db.Decimal(10, 2)
-}
-
-model PurchaseItem {
-  id               Int           @id @default(autoincrement())
-  purchaseId       Int
-  purchase         PurchaseOrder @relation(fields: [purchaseId], references: [id])
-  productId        String
-  product          Product       @relation(fields: [productId], references: [id])
-  quantityOrdered  Int
-  quantityReceived Int
-  unitId           Int
-  unit             ProductUnit   @relation(fields: [unitId], references: [id])
-
-  // quantityPerUnit   Int
-
-  unitPrice  Decimal @db.Decimal(10, 2)
-  totalPrice Decimal @db.Decimal(10, 2)
-}
-
-model StockLog {
-  id              Int             @id @default(autoincrement())
-  productId       String
-  product         Product         @relation(fields: [productId], references: [id])
-  warehouseId     Int
-  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
-  quantityChange  Int
-  type            StockChangeType
-  saleOrderId     Int?
-  saleOrder       SaleOrder?      @relation(fields: [saleOrderId], references: [id])
-  purchaseOrderId Int?
-  purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
-  createdAt       DateTime        @default(now())
+enum InspectionCheckResult {
+  PASSED
+  FAILED
+  NOT_APPLICABLE
 }
