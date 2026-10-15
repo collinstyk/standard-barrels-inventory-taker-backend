@@ -26,6 +26,7 @@ function assertIdempotentMatch(
     kind: posting.kind,
     purchaseReceiptId: posting.purchaseReceiptId ?? undefined,
     saleOrderId: posting.saleOrderId ?? undefined,
+    saleDispatchId: posting.saleDispatchId ?? undefined,
     purchaseReturnId: posting.purchaseReturnId ?? undefined,
     saleReturnId: posting.saleReturnId ?? undefined,
     returnInspectionId: posting.returnInspectionId ?? undefined,

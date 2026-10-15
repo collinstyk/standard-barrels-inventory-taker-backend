@@ -22,7 +22,7 @@ export interface AllowedV2CommandIdentity {
 }
 
 export async function assertGlobalV2CommandKeyAvailable(tx: InventoryTransaction, key: string, allowed: AllowedV2CommandIdentity = {}): Promise<void> {
-  const [purchaseOrder, receipt, saleOrder, saleReturn, inspection, purchaseReturn, posting] = await Promise.all([
+  const [purchaseOrder, receipt, saleOrder, saleReturn, inspection, purchaseReturn, posting, saleDispatch] = await Promise.all([
     tx.purchaseOrder.findUnique({ where: { requestIdempotencyKey: key }, select: { id: true } }),
     tx.purchaseReceipt.findUnique({ where: { idempotencyKey: key }, select: { id: true } }),
     tx.saleOrder.findUnique({ where: { requestIdempotencyKey: key }, select: { id: true } }),
@@ -30,6 +30,7 @@ export async function assertGlobalV2CommandKeyAvailable(tx: InventoryTransaction
     tx.returnInspection.findUnique({ where: { idempotencyKey: key }, select: { id: true } }),
     tx.purchaseReturn.findUnique({ where: { idempotencyKey: key }, select: { id: true } }),
     tx.inventoryPosting.findUnique({ where: { idempotencyKey: key }, select: { id: true } }),
+    tx.saleDispatch.findUnique({ where: { idempotencyKey: key }, select: { id: true } }),
   ]);
   const conflict = (record: { id: number } | null, id?: number) => record !== null && record.id !== id;
   if (conflict(purchaseOrder, allowed.purchaseOrderId)
@@ -38,5 +39,6 @@ export async function assertGlobalV2CommandKeyAvailable(tx: InventoryTransaction
     || conflict(saleReturn, allowed.saleReturnId)
     || conflict(inspection, allowed.returnInspectionId)
     || conflict(purchaseReturn, allowed.purchaseReturnId)
-    || (posting !== null && posting.id !== allowed.postingId)) throw new IdempotencyConflictError();
+    || (posting !== null && posting.id !== allowed.postingId)
+    || saleDispatch !== null) throw new IdempotencyConflictError();
 }

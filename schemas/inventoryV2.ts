@@ -110,6 +110,10 @@ export const v2SaleUpdateSchema = z.object({
   validateFulfillments(item, (path, message) => context.addIssue({ code: "custom", path: ["items", index, ...path], message }), sale.transactionStatus !== undefined && sale.transactionStatus !== "DRAFT");
 }));
 
+export const saleDispatchSchema = z.object({
+  lines: z.array(z.object({ fulfillmentId: positiveInt, quantityInOrderUnit: positiveInt }).strict()).min(1),
+}).strict();
+
 export const receiptPathSchema = z.object({
   purchaseId: positiveInt,
   receiptId: positiveInt,

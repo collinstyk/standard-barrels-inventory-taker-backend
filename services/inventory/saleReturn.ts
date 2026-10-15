@@ -47,7 +47,7 @@ export async function createSaleReturn(client: PrismaClient, saleId: number, inp
     await assertGlobalV2CommandKeyAvailable(tx, idempotencyKey);
     await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "SaleOrder" WHERE "id" = ${saleId} FOR UPDATE`);
     const sale = await tx.saleOrder.findUnique({ where: { id: saleId }, include: { inventoryPosting: true } });
-    if (!sale || sale.transactionStatus === "CANCELLED" || !sale.inventoryPosting) throw new PostingInvariantError("Customer returns require an issued sale order.");
+    if (!sale || sale.transactionStatus === "CANCELLED" || (!sale.inventoryPosting && !(await tx.saleDispatch.findFirst({ where: { saleOrderId: saleId }, select: { id: true } })))) throw new PostingInvariantError("Customer returns require an issued sale order.");
     const requestedItemIds = input.items.map((item) => item.originalSaleItemId);
     if (new Set(requestedItemIds).size !== requestedItemIds.length) throw new PostingInvariantError("Duplicate sale-item return lines are not allowed.");
     const items = await tx.saleItem.findMany({ where: { saleId, id: { in: requestedItemIds } } });

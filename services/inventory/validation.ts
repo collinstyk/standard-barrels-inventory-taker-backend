@@ -49,6 +49,11 @@ const sourceKeyByKind: Partial<Record<PostingKind, keyof PostingSource>> = {
 
 export function validatePostingSource(kind: PostingKind, source: PostingSource): void {
   const populated = Object.entries(source).filter(([, value]) => value !== undefined && value !== null);
+  if (kind === "SALE_ISSUE" && populated.length === 1 && populated[0]?.[0] === "saleDispatchId") {
+    const value = source.saleDispatchId;
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= POSTGRES_INTEGER_MAX) return;
+    throw new InvalidPostingSourceError(kind);
+  }
   const requiredKey = sourceKeyByKind[kind];
   if (requiredKey) {
     if (populated.length !== 1 || populated[0]?.[0] !== requiredKey) throw new InvalidPostingSourceError(kind);
@@ -68,7 +73,7 @@ export function postingSourceMatches(
   existing: PostingSource & { kind: PostingKind },
 ): boolean {
   if (existing.kind !== kind) return false;
-  return (["purchaseReceiptId", "saleOrderId", "purchaseReturnId", "saleReturnId", "returnInspectionId", "reversalOfId"] as const)
+  return (["purchaseReceiptId", "saleOrderId", "saleDispatchId", "purchaseReturnId", "saleReturnId", "returnInspectionId", "reversalOfId"] as const)
     .every((key) => (source[key] ?? null) === (existing[key] ?? null));
 }
 

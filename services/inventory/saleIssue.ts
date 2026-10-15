@@ -147,6 +147,7 @@ function postingCommand(command: SaleIssueCommand) {
   return {
     kind: "SALE_ISSUE" as const,
     idempotencyKey: command.idempotencyKey,
+    requestFingerprint: command.requestFingerprint,
     performedById: command.performedById,
     source: { saleOrderId: command.saleOrderId },
     notes: command.notes,

@@ -30,6 +30,7 @@ export interface AllocationResult {
 export interface PostingSource {
   purchaseReceiptId?: number;
   saleOrderId?: number;
+  saleDispatchId?: number;
   purchaseReturnId?: number;
   saleReturnId?: number;
   returnInspectionId?: number;
@@ -78,6 +79,7 @@ export interface SaleIssueItemInput {
 
 export interface SaleIssueCommand {
   idempotencyKey: string;
+  requestFingerprint?: string;
   performedById: string;
   saleOrderId: number;
   businessToday: BusinessDate;

@@ -119,6 +119,7 @@ model SaleOrder {
   seller                User              @relation("Seller", fields: [sellerId], references: [id])
   stockLogs             StockLog[]
   inventoryPosting      InventoryPosting? @relation("SaleActivationPosting")
+  dispatches            SaleDispatch[]
   saleReturns           SaleReturn[]
 }
 
@@ -162,22 +163,24 @@ model SaleItem {
   sourceWarehouse        Warehouse?            @relation("SaleItemSourceWarehouse", fields: [sourceWarehouseId], references: [id])
   allocations            SaleAllocation[]
   fulfillments           SaleItemFulfillment[]
+  dispatchLines          SaleDispatchLine[]
   returnItems            SaleReturnItem[]
 
   @@index([sourceWarehouseId])
 }
 
 model SaleItemFulfillment {
-  id                     Int              @id @default(autoincrement())
+  id                     Int                @id @default(autoincrement())
   saleItemId             Int
   warehouseId            Int
   quantityInOrderUnit    Int
   unitMultiplierSnapshot Int
   quantityBase           Int
-  createdAt              DateTime         @default(now())
-  saleItem               SaleItem         @relation(fields: [saleItemId], references: [id])
-  warehouse              Warehouse        @relation(fields: [warehouseId], references: [id])
+  createdAt              DateTime           @default(now())
+  saleItem               SaleItem           @relation(fields: [saleItemId], references: [id])
+  warehouse              Warehouse          @relation(fields: [warehouseId], references: [id])
   allocations            SaleAllocation[]
+  dispatchLines          SaleDispatchLine[]
 
   @@unique([saleItemId, warehouseId])
   @@index([saleItemId])
@@ -262,6 +265,7 @@ model InventoryPosting {
   notes              String?
   purchaseReceiptId  Int?              @unique
   saleOrderId        Int?              @unique
+  saleDispatchId     Int?              @unique
   purchaseReturnId   Int?              @unique
   saleReturnId       Int?              @unique
   returnInspectionId Int?              @unique
@@ -269,6 +273,7 @@ model InventoryPosting {
   performedBy        User              @relation("PostingPerformedBy", fields: [performedById], references: [id])
   purchaseReceipt    PurchaseReceipt?  @relation(fields: [purchaseReceiptId], references: [id])
   saleOrder          SaleOrder?        @relation("SaleActivationPosting", fields: [saleOrderId], references: [id])
+  saleDispatch       SaleDispatch?     @relation(fields: [saleDispatchId], references: [id])
   purchaseReturn     PurchaseReturn?   @relation(fields: [purchaseReturnId], references: [id])
   saleReturn         SaleReturn?       @relation(fields: [saleReturnId], references: [id])
   returnInspection   ReturnInspection? @relation(fields: [returnInspectionId], references: [id])
@@ -278,6 +283,34 @@ model InventoryPosting {
 
   @@index([performedById, postedAt])
   @@index([kind, postedAt])
+}
+
+model SaleDispatch {
+  id                 Int                @id @default(autoincrement())
+  saleOrderId        Int
+  idempotencyKey     String             @unique
+  requestFingerprint String
+  dispatchedAt       DateTime           @default(now())
+  saleOrder          SaleOrder          @relation(fields: [saleOrderId], references: [id])
+  lines              SaleDispatchLine[]
+  posting            InventoryPosting?
+
+  @@index([saleOrderId, dispatchedAt])
+}
+
+model SaleDispatchLine {
+  id                  Int                 @id @default(autoincrement())
+  dispatchId          Int
+  fulfillmentId       Int
+  quantityInOrderUnit Int
+  quantityBase        Int
+  dispatch            SaleDispatch        @relation(fields: [dispatchId], references: [id])
+  fulfillment         SaleItemFulfillment @relation(fields: [fulfillmentId], references: [id])
+  saleItem            SaleItem?           @relation(fields: [saleItemId], references: [id])
+  saleItemId          Int?
+
+  @@unique([dispatchId, fulfillmentId])
+  @@index([fulfillmentId])
 }
 
 model StockMovement {
