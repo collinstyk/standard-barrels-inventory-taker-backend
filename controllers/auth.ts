@@ -8,7 +8,7 @@ import prisma from '../prisma';
 import { isPublicSignupEnabled } from '../config/environment';
 import { createPublicStaff } from '../services/auth';
 
-const signToken = (id: string): string => {
+export const signToken = (id: string): string => {
     const jwtSecret = process.env.JWT_SECRET;
     const expiresIn = (process.env.JWT_EXPIRES_IN || "1d") as SignOptions["expiresIn"];
 

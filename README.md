@@ -60,6 +60,7 @@ See [.env.example](.env.example) and [the secure startup guide](docs/v1-f5-secur
 ## API overview
 
 - Authentication: `POST /api/v1/auth/login`, `POST /api/v1/auth/signup`
+- Admin invitations: `POST /api/v1/auth/invitations` with an ADMIN JWT and `{ "email": "person@example.com", "role": "STAFF" }` (also MANAGER or AUDITOR). The response contains a one-time token; share it privately. `POST /api/v1/auth/invitations/inspect` with `{ "token": "..." }` displays the recipient and role. `POST /api/v1/auth/invitations/accept` with `{ "token": "...", "name": "Person", "password": "StrongPass1!" }` creates the account and returns a JWT. Links expire after 48 hours. Keep `PUBLIC_SIGNUP_ENABLED=false`. Manual link sharing proves possession of the link; email ownership verification requires delivery to the invited mailbox.
 - Catalog: `/api/v1/catalog/categories`, `/api/v1/catalog/products`, and product-unit subroutes
 - Warehouses and contacts: `/api/v1/warehouses`, `/api/v1/contacts`
 - Purchases and receipts: `/api/v1/purchase`, `/api/v1/purchase/:id/receipts`, and receipt posting

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "../generated/prisma/client";
 import {
   getSellableQuantitiesByProduct,
@@ -7,7 +8,7 @@ import {
 export class MasterDataError extends Error {
   constructor(
     message: string,
-    public readonly statusCode: 404 | 409,
+    public readonly statusCode: 400 | 404 | 409,
   ) {
     super(message);
   }
@@ -108,7 +109,8 @@ type UnitInput = {
 type ProductInput = {
   name: string;
   baseUnit: string;
-  categoryId: string;
+  categoryId?: string;
+  newCategoryName?: string;
   reorderPoint: number;
   units: UnitInput[];
 };
@@ -150,21 +152,33 @@ async function shapeProductStock(
 }
 
 export async function createProduct(db: PrismaClient, input: ProductInput) {
+  if ((input.categoryId !== undefined) === (input.newCategoryName !== undefined))
+    throw new MasterDataError("Provide exactly one of categoryId or newCategoryName.", 400);
   const product = await controlled(
     () =>
       db.$transaction(async (tx) => {
-        if (
-          !(await tx.category.findUnique({
-            where: { id: input.categoryId },
-            select: { id: true },
-          }))
-        )
-          throw missing("Category");
+        let categoryId = input.categoryId;
+        if (categoryId !== undefined) {
+          if (!(await tx.category.findUnique({ where: { id: categoryId }, select: { id: true } })))
+            throw missing("Category");
+        } else {
+          // Prisma cannot upsert on an expression index. Match Category_name_ci_key
+          // in PostgreSQL so concurrent requests reuse the winner without aborting
+          // the transaction. Preserve the existing category's display spelling.
+          const [category] = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            INSERT INTO "Category" ("id", "name")
+            VALUES (${randomUUID()}, ${input.newCategoryName!.trim()})
+            ON CONFLICT (LOWER(BTRIM("name"))) DO UPDATE
+              SET "name" = "Category"."name"
+            RETURNING "id"
+          `);
+          categoryId = category!.id;
+        }
         return tx.product.create({
           data: {
             name: input.name,
             baseUnit: input.baseUnit,
-            categoryId: input.categoryId,
+            categoryId,
             reorderPoint: input.reorderPoint,
             quantityInStock: 0,
             units: {

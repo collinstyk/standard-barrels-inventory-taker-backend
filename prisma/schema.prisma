@@ -13,6 +13,7 @@ model User {
   name              String
   password          String
   role              UserRole
+  sentInvitations   UserInvitation[]   @relation("InvitationCreator")
   purchases         PurchaseOrder[]    @relation("WarehouseReceiver")
   sales             SaleOrder[]        @relation("Seller")
   inventoryPostings InventoryPosting[] @relation("PostingPerformedBy")
@@ -24,6 +25,20 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model UserInvitation {
+  id          String   @id @default(uuid())
+  email       String
+  role        UserRole
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+  createdById String
+  createdBy   User     @relation("InvitationCreator", fields: [createdById], references: [id])
+
+  @@index([email, expiresAt])
 }
 
 model Contact {

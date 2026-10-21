@@ -52,12 +52,19 @@ export const createProductSchema = z
   .object({
     name,
     baseUnit: z.string().trim().min(1).max(50),
-    categoryId: uuid,
+    categoryId: uuid.optional(),
+    newCategoryName: name.optional(),
     reorderPoint: nonnegativeInt.default(0),
     units: z.array(unitInputSchema).min(1).max(100),
   })
   .strict()
   .superRefine((value, context) => {
+    if ((value.categoryId !== undefined) === (value.newCategoryName !== undefined))
+      context.addIssue({
+        code: "custom",
+        path: ["categoryId"],
+        message: "Provide exactly one of categoryId or newCategoryName.",
+      });
     if (!value.units.some((unit) => unit.multiplier === 1))
       context.addIssue({
         code: "custom",

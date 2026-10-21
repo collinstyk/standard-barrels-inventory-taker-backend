@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const passwordSchema = z
+export const passwordSchema = z
       .string({ message: "Password is required" })
       .min(6, "Password must be at least 6 characters long")
       .refine(
