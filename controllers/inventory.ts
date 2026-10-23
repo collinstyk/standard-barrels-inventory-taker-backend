@@ -5,8 +5,8 @@ import AppError from "../utils/appError";
 import { StockAdjustmentBody, StockTransferBody } from "../types/inventory";
 import { getAuthoritativeExpiringSoon, getAuthoritativeLowStock, isInventoryV2Enabled, getWarehouseAvailability } from "../services/inventory";
 import { availabilityQuerySchema, expiringSoonQuerySchema, lowStockQuerySchema } from "../schemas/inventoryV2";
-import { physicalCountAdjustmentSchema } from "../schemas/inventoryV2";
-import { adjustInventoryBatch } from "../services/inventory";
+import { openingStockSchema, physicalCountAdjustmentSchema } from "../schemas/inventoryV2";
+import { adjustInventoryBatch, recordOpeningStock } from "../services/inventory";
 import { inventoryHttpError } from "../utils/inventoryHttpError";
 
 export const getInventoryAvailability = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
@@ -25,6 +25,18 @@ export const createPhysicalCountAdjustment = catchAsync(async(req:Request,res:Re
   if(!isInventoryV2Enabled())return next(new AppError("Inventory V2 adjustments are unavailable while Inventory V2 is disabled.",503));
   const parsed=physicalCountAdjustmentSchema.safeParse(req.body);if(!parsed.success)return next(new AppError(`Validation Failed: ${parsed.error.issues.map(issue=>`${issue.path.join(".")}: ${issue.message}`).join(" | ")}`,400));
   try{res.status(200).json({status:"success",data:await adjustInventoryBatch(prisma,parsed.data,req.user!.id,req.idempotencyKey!)});}catch(error){next(inventoryHttpError(error));}
+});
+
+export const createOpeningStock = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  if (!isInventoryV2Enabled()) return next(new AppError("Opening stock is unavailable while Inventory V2 is disabled.", 503));
+  const parsed = openingStockSchema.safeParse(req.body);
+  if (!parsed.success) return next(new AppError(`Validation Failed: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(" | ")}`, 400));
+  try {
+    const data = await recordOpeningStock(prisma, parsed.data, req.user!.id, req.idempotencyKey!);
+    res.status(data.replayed ? 200 : 201).json({ status: "success", data });
+  } catch (error) {
+    next(inventoryHttpError(error));
+  }
 });
 
 export const adjustStock = catchAsync(

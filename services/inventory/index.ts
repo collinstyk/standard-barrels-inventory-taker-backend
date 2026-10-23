@@ -1,5 +1,6 @@
 export * from "./allocation";
 export * from "./adjustment";
+export * from "./openingStock";
 export * from "./batchMutations";
 export * from "./businessDate";
 export * from "./errors";

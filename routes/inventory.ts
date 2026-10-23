@@ -6,6 +6,7 @@ import {
   getExpiringSoonAlerts,
   getInventoryAvailability,
   createPhysicalCountAdjustment,
+  createOpeningStock,
 } from "../controllers/inventory";
 import { protect, restrictTo } from "../middlewares/auth";
 import { UserRole } from "../generated/prisma/enums";
@@ -16,6 +17,7 @@ const router = Router();
 
 router.route("/availability").get(protect, restrictTo(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF, UserRole.AUDITOR), getInventoryAvailability);
 router.post("/adjustments",protect,restrictTo(UserRole.ADMIN,UserRole.MANAGER),requireIdempotencyKey,createPhysicalCountAdjustment);
+router.post("/opening-stock", protect, restrictTo(UserRole.ADMIN, UserRole.MANAGER), requireIdempotencyKey, createOpeningStock);
 
 router
   .route("/adjust")

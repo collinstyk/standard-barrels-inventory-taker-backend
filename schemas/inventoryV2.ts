@@ -147,3 +147,25 @@ export const physicalCountAdjustmentSchema = z.object({
   reason: z.enum(["PHYSICAL_COUNT", "LOSS", "FOUND_STOCK", "DATA_CORRECTION"]),
   notes: z.string().trim().min(1).max(1_000).optional(),
 }).strict();
+
+export const openingStockSchema = z.object({
+  notes: z.string().trim().min(1).max(1_000).optional(),
+  lines: z.array(z.object({
+    productId: z.uuid(),
+    unitId: positiveInt,
+    warehouseId: positiveInt,
+    quantityInUnit: positiveInt,
+    expiryDate: dateOnlySchema.nullable().optional(),
+  }).strict()).min(1).max(100).superRefine((lines, context) => {
+    const seen = new Set<string>();
+    lines.forEach((line, index) => {
+      const key = `${line.productId}:${line.warehouseId}:${line.expiryDate ?? "none"}`;
+      if (seen.has(key)) context.addIssue({
+        code: "custom",
+        path: [index],
+        message: "Duplicate product, warehouse, and expiry line.",
+      });
+      seen.add(key);
+    });
+  }),
+}).strict();
