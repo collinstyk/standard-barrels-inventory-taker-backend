@@ -3,8 +3,8 @@ import prisma from "../prisma";
 import { catchAsync } from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { StockAdjustmentBody, StockTransferBody } from "../types/inventory";
-import { getAuthoritativeExpiringSoon, getAuthoritativeLowStock, isInventoryV2Enabled, getWarehouseAvailability } from "../services/inventory";
-import { availabilityQuerySchema, expiringSoonQuerySchema, lowStockQuerySchema } from "../schemas/inventoryV2";
+import { getAuthoritativeExpiringSoon, getAuthoritativeLowStock, getInventoryAvailabilityPage, isInventoryV2Enabled, getWarehouseAvailability } from "../services/inventory";
+import { availabilityListQuerySchema, availabilityQuerySchema, expiringSoonQuerySchema, lowStockQuerySchema } from "../schemas/inventoryV2";
 import { openingStockSchema, physicalCountAdjustmentSchema } from "../schemas/inventoryV2";
 import { adjustInventoryBatch, recordOpeningStock } from "../services/inventory";
 import { inventoryHttpError } from "../utils/inventoryHttpError";
@@ -16,6 +16,18 @@ export const getInventoryAvailability = catchAsync(async (req: Request, res: Res
   try {
     const availability = await getWarehouseAvailability(prisma, parsed.data.productId, parsed.data.unitId, parsed.data.requestedQuantity);
     res.status(200).json({ status: "success", data: availability });
+  } catch (error) {
+    next(inventoryHttpError(error));
+  }
+});
+
+export const listInventoryAvailability = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  if (!isInventoryV2Enabled()) return next(new AppError("Inventory V2 availability is unavailable while Inventory V2 is disabled.", 503));
+  const parsed = availabilityListQuerySchema.safeParse(req.query);
+  if (!parsed.success) return next(new AppError(`Validation Failed: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join(" | ")}`, 400));
+  try {
+    const result = await getInventoryAvailabilityPage(prisma, parsed.data);
+    res.status(200).json({ status: "success", ...result });
   } catch (error) {
     next(inventoryHttpError(error));
   }

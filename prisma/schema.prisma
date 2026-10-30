@@ -39,6 +39,7 @@ model UserInvitation {
   createdBy   User     @relation("InvitationCreator", fields: [createdById], references: [id])
 
   @@index([email, expiresAt])
+  @@index([createdById])
 }
 
 model Contact {
@@ -48,12 +49,14 @@ model Contact {
   isBuyer    Boolean         @default(false)
   sales      PurchaseOrder[]
   purchases  SaleOrder[]
+  @@index([name, id])
 }
 
 model Category {
   id      String    @id @default(uuid())
   name    String
   product Product[]
+  @@index([name, id])
 }
 
 model Product {
@@ -71,6 +74,8 @@ model Product {
   stockLogs        StockLog[]
   inventoryBatches InventoryBatch[]
   stockMovementsV2 StockMovement[]
+  @@index([name, id])
+  @@index([categoryId, name, id])
 }
 
 model ProductUnit {
@@ -83,6 +88,7 @@ model ProductUnit {
   product       Product        @relation(fields: [productId], references: [id])
   purchaseItems PurchaseItem[]
   saleItems     SaleItem[]
+  @@index([productId, name, id])
 }
 
 model Warehouse {
@@ -113,6 +119,8 @@ model StockLevel {
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@unique([productId, warehouseId, expiryDate])
+  @@index([warehouseId])
+  @@index([expiryDate])
 }
 
 model SaleOrder {
@@ -136,6 +144,11 @@ model SaleOrder {
   inventoryPosting      InventoryPosting? @relation("SaleActivationPosting")
   dispatches            SaleDispatch[]
   saleReturns           SaleReturn[]
+  @@index([createdAt, id])
+  @@index([transactionStatus, createdAt, id])
+  @@index([paymentStatus, createdAt, id])
+  @@index([deliveryStatus, createdAt, id])
+  @@index([buyerId, createdAt, id])
 }
 
 model PurchaseOrder {
@@ -158,6 +171,11 @@ model PurchaseOrder {
   stockLogs             StockLog[]
   receipts              PurchaseReceipt[]
   purchaseReturns       PurchaseReturn[]
+  @@index([createdAt, id])
+  @@index([transactionStatus, createdAt, id])
+  @@index([paymentStatus, createdAt, id])
+  @@index([receivingStatus, createdAt, id])
+  @@index([supplierId, createdAt, id])
 }
 
 model SaleItem {
@@ -182,6 +200,8 @@ model SaleItem {
   returnItems            SaleReturnItem[]
 
   @@index([sourceWarehouseId])
+  @@index([saleId])
+  @@index([productId])
 }
 
 model SaleItemFulfillment {
@@ -218,6 +238,8 @@ model PurchaseItem {
   unit                   ProductUnit           @relation(fields: [unitId], references: [id])
   receiptItems           PurchaseReceiptItem[]
   returnItems            PurchaseReturnItem[]
+  @@index([purchaseId])
+  @@index([productId])
 }
 
 model StockLog {
@@ -233,6 +255,10 @@ model StockLog {
   purchaseOrder   PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
   saleOrder       SaleOrder?      @relation(fields: [saleOrderId], references: [id])
   warehouse       Warehouse       @relation(fields: [warehouseId], references: [id])
+  @@index([productId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([saleOrderId])
+  @@index([purchaseOrderId])
 }
 
 model InventoryBatch {
@@ -267,6 +293,7 @@ model InventoryBatch {
   @@index([sourceBatchId])
   @@index([purchaseReceiptItemId])
   @@index([saleReturnItemId])
+  @@index([warehouseId, productId])
 }
 
 model InventoryPosting {
@@ -326,6 +353,7 @@ model SaleDispatchLine {
 
   @@unique([dispatchId, fulfillmentId])
   @@index([fulfillmentId])
+  @@index([saleItemId])
 }
 
 model StockMovement {
@@ -535,6 +563,7 @@ model ReturnInspection {
   @@index([saleReturnItemId, inspectedAt])
   @@index([sourceBatchId, inspectedAt])
   @@index([inspectorId, inspectedAt])
+  @@index([finalWarehouseId])
 }
 
 enum UserRole {

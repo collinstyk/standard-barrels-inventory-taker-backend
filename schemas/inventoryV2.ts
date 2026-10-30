@@ -125,6 +125,12 @@ export const availabilityQuerySchema = z.object({
   requestedQuantity: z.coerce.number().int().positive().max(POSTGRES_INTEGER_MAX).optional(),
 }).strict();
 
+export const availabilityListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().max(POSTGRES_INTEGER_MAX).default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  search: z.string().trim().min(1).max(120).optional(),
+}).strict();
+
 const queryPage = z.coerce.number().int().positive().max(POSTGRES_INTEGER_MAX);
 
 export const lowStockQuerySchema = z.object({

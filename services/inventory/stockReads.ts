@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { getBusinessDate } from "./businessDate";
 import type { BusinessDate } from "./types";
+import { POSTGRES_INTEGER_MAX } from "./validation";
+import { PostingInvariantError } from "./errors";
 
 type PageQuery = { page: number; limit: number };
 type LowStockQuery = PageQuery & { search?: string };
@@ -15,6 +17,96 @@ type LowStockRow = {
 };
 
 type CountRow = { total: bigint | number };
+
+export type AvailabilityPageQuery = PageQuery & { search?: string };
+
+function stockLevel(quantityBase: number, reorderPoint: number) {
+  if (quantityBase === 0 || (reorderPoint > 0 && quantityBase <= Math.floor(reorderPoint / 4))) return "CRITICAL" as const;
+  if (quantityBase <= reorderPoint) return "LOW" as const;
+  return "NORMAL" as const;
+}
+
+// Page products first, then aggregate only eligible batches for those products.
+// A product with no sellable stock remains in the result with zero total and no warehouses.
+export async function getInventoryAvailabilityPage(db: PrismaClient, query: AvailabilityPageQuery) {
+  const businessDate = getBusinessDate();
+  const where: Prisma.ProductWhereInput = query.search
+    ? { name: { contains: query.search, mode: "insensitive" } }
+    : {};
+  const [products, total] = await Promise.all([
+    db.product.findMany({
+      where,
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      select: {
+        id: true, name: true, baseUnit: true, reorderPoint: true,
+        units: { orderBy: [{ multiplier: "asc" }, { id: "asc" }], select: { id: true, name: true, multiplier: true, sku: true } },
+      },
+    }),
+    db.product.count({ where }),
+  ]);
+  const productIds = products.map((product) => product.id);
+  const batchTotals = productIds.length ? await db.inventoryBatch.groupBy({
+    by: ["productId", "warehouseId"],
+    where: {
+      productId: { in: productIds },
+      disposition: "SELLABLE",
+      quantityOnHandBase: { gt: 0 },
+      OR: [{ expiryDate: null }, { expiryDate: { gte: new Date(`${businessDate}T00:00:00.000Z`) } }],
+    },
+    _sum: { quantityOnHandBase: true },
+  }) : [];
+  const warehouseIds = [...new Set(batchTotals.map((row) => row.warehouseId))];
+  const warehouses = warehouseIds.length ? await db.warehouse.findMany({
+    where: { id: { in: warehouseIds } },
+    select: { id: true, name: true, location: true },
+  }) : [];
+  const warehouseById = new Map(warehouses.map((warehouse) => [warehouse.id, warehouse]));
+  const batchesByProduct = new Map<string, typeof batchTotals>();
+  for (const row of batchTotals) {
+    const grouped = batchesByProduct.get(row.productId) ?? [];
+    grouped.push(row);
+    batchesByProduct.set(row.productId, grouped);
+  }
+  return {
+    businessDate,
+    evaluatedAt: new Date().toISOString(),
+    informationalOnly: true,
+    data: products.map((product) => {
+      const rows = batchesByProduct.get(product.id) ?? [];
+      const sellableQuantityBase = rows.reduce((sum, row) => sum + (row._sum.quantityOnHandBase ?? 0), 0);
+      if (!Number.isSafeInteger(sellableQuantityBase) || sellableQuantityBase > POSTGRES_INTEGER_MAX)
+        throw new PostingInvariantError("Product availability exceeds the database range.");
+      return {
+        productId: product.id,
+        productName: product.name,
+        baseUnit: product.baseUnit,
+        reorderPoint: product.reorderPoint,
+        units: product.units.map((unit) => ({ unitId: unit.id, name: unit.name, multiplier: unit.multiplier, sku: unit.sku,
+          availableQuantityInUnit: Math.floor(sellableQuantityBase / unit.multiplier), baseUnitRemainder: sellableQuantityBase % unit.multiplier })),
+        sellableQuantityBase,
+        stockLevel: stockLevel(sellableQuantityBase, product.reorderPoint),
+        warehouses: rows.map((row) => {
+          const warehouse = warehouseById.get(row.warehouseId)!;
+          const quantityBase = row._sum.quantityOnHandBase ?? 0;
+          if (!Number.isSafeInteger(quantityBase) || quantityBase > POSTGRES_INTEGER_MAX)
+            throw new PostingInvariantError("Warehouse availability exceeds the database range.");
+          return {
+            warehouseId: warehouse.id,
+            warehouseName: warehouse.name,
+            warehouseLocation: warehouse.location,
+            sellableQuantityBase: quantityBase,
+            stockLevel: stockLevel(quantityBase, product.reorderPoint),
+            unitQuantities: product.units.map((unit) => ({ unitId: unit.id,
+              availableQuantityInUnit: Math.floor(quantityBase / unit.multiplier), baseUnitRemainder: quantityBase % unit.multiplier })),
+          };
+        }).sort((left, right) => left.warehouseName.localeCompare(right.warehouseName) || left.warehouseId - right.warehouseId),
+      };
+    }),
+    pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+  };
+}
 
 export function addBusinessDays(date: BusinessDate, days: number): BusinessDate {
   const [year, month, day] = date.split("-").map(Number);

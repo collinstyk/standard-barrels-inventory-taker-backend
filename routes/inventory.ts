@@ -5,6 +5,7 @@ import {
   getLowStockAlerts,
   getExpiringSoonAlerts,
   getInventoryAvailability,
+  listInventoryAvailability,
   createPhysicalCountAdjustment,
   createOpeningStock,
 } from "../controllers/inventory";
@@ -16,6 +17,7 @@ import { requireIdempotencyKey } from "../middlewares/idempotency";
 const router = Router();
 
 router.route("/availability").get(protect, restrictTo(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF, UserRole.AUDITOR), getInventoryAvailability);
+router.route("/availability-list").get(protect, restrictTo(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF, UserRole.AUDITOR), listInventoryAvailability);
 router.post("/adjustments",protect,restrictTo(UserRole.ADMIN,UserRole.MANAGER),requireIdempotencyKey,createPhysicalCountAdjustment);
 router.post("/opening-stock", protect, restrictTo(UserRole.ADMIN, UserRole.MANAGER), requireIdempotencyKey, createOpeningStock);
 
