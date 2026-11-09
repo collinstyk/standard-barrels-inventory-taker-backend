@@ -66,6 +66,8 @@ model Product {
   categoryId       String
   quantityInStock  Int
   reorderPoint     Int              @default(0)
+  defaultCostBase  Decimal?         @db.Decimal(18, 4)
+  lastReceivedCostBase Decimal?     @db.Decimal(18, 4)
   category         Category         @relation(fields: [categoryId], references: [id])
   units            ProductUnit[]
   purchaseItems    PurchaseItem[]
@@ -268,6 +270,7 @@ model InventoryBatch {
   expiryDate            DateTime?            @db.Date
   receivedAt            DateTime
   quantityOnHandBase    Int
+  unitCostBase          Decimal?          @db.Decimal(24, 8)
   disposition           BatchDisposition     @default(SELLABLE)
   purchaseReceiptItemId Int?
   saleReturnItemId      Int?

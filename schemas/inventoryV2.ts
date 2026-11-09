@@ -161,6 +161,7 @@ export const openingStockSchema = z.object({
     unitId: positiveInt,
     warehouseId: positiveInt,
     quantityInUnit: positiveInt,
+    unitCostInUnit: nonnegativeMoney.optional(),
     expiryDate: dateOnlySchema.nullable().optional(),
   }).strict()).min(1).max(100).superRefine((lines, context) => {
     const seen = new Set<string>();

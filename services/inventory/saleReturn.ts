@@ -164,7 +164,7 @@ export async function inspectSaleReturn(client: PrismaClient, saleId: number, re
       const movements: MovementInput[] = [{ sequence: 1, type: "RETURN_INSPECTION_RECLASSIFICATION", productId: batch.productId, batchId: batch.id, warehouseId: batch.warehouseId, quantityChangeBase: -quantityBase, performedById: userId, notes: input.notes }];
       let destinationBatchId: string | null = null;
       if (input.outcome !== "REJECTED") {
-        const derived = await tx.inventoryBatch.create({ data: { id: randomUUID(), productId: batch.productId, warehouseId: input.warehouseId, expiryDate: batch.expiryDate, receivedAt: new Date(input.inspectedAt), quantityOnHandBase: quantityBase, disposition: input.outcome, saleReturnItemId: item.id, sourceBatchId: batch.id } });
+        const derived = await tx.inventoryBatch.create({ data: { id: randomUUID(), productId: batch.productId, warehouseId: input.warehouseId, expiryDate: batch.expiryDate, receivedAt: new Date(input.inspectedAt), quantityOnHandBase: quantityBase, unitCostBase: batch.unitCostBase, disposition: input.outcome, saleReturnItemId: item.id, sourceBatchId: batch.id } });
         destinationBatchId = derived.id;
         movements.push({ sequence: 2, type: input.outcome === "SELLABLE" ? "CUSTOMER_RETURN_SELLABLE" : "CUSTOMER_RETURN_DAMAGED", productId: batch.productId, batchId: derived.id, warehouseId: derived.warehouseId, quantityChangeBase: quantityBase, performedById: userId, notes: input.notes });
         if (input.outcome === "SELLABLE") await tx.product.update({ where: { id: batch.productId }, data: { quantityInStock: { increment: quantityBase } } });

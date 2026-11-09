@@ -112,6 +112,7 @@ type ProductInput = {
   categoryId?: string;
   newCategoryName?: string;
   reorderPoint: number;
+  defaultCostBase?: string | null;
   units: UnitInput[];
 };
 const productSelect = {
@@ -119,6 +120,8 @@ const productSelect = {
   name: true,
   baseUnit: true,
   reorderPoint: true,
+  defaultCostBase: true,
+  lastReceivedCostBase: true,
   quantityInStock: true,
   category: { select: { id: true, name: true } },
   units: {
@@ -130,22 +133,33 @@ const productSelect = {
 type SelectedProduct = Prisma.ProductGetPayload<{
   select: typeof productSelect;
 }>;
-type ProductStockResponse = Omit<SelectedProduct, "quantityInStock"> & {
+type ProductStockResponse = Omit<SelectedProduct, "quantityInStock" | "units"> & {
   quantityInStock?: number;
   sellableQuantityBase?: number;
+  units: ReturnType<typeof withDerivedCosts>["units"];
 };
+function withDerivedCosts(product: Omit<SelectedProduct, "quantityInStock">) {
+  return {
+    ...product,
+    units: product.units.map((unit) => ({
+      ...unit,
+      defaultCostInUnit: product.defaultCostBase?.times(unit.multiplier).toFixed(4) ?? null,
+      lastReceivedCostInUnit: product.lastReceivedCostBase?.times(unit.multiplier).toFixed(4) ?? null,
+    })),
+  };
+}
 async function shapeProductStock(
   db: PrismaClient,
   products: SelectedProduct[],
 ): Promise<ProductStockResponse[]> {
-  if (!isInventoryV2Enabled()) return products as ProductStockResponse[];
+  if (!isInventoryV2Enabled()) return products.map(withDerivedCosts) as ProductStockResponse[];
   const quantities = await getSellableQuantitiesByProduct(
     db,
     products.map((product) => product.id),
   );
   return products.map(
     ({ quantityInStock: _compatibilityCache, ...product }) => ({
-      ...product,
+      ...withDerivedCosts(product),
       sellableQuantityBase: quantities.get(product.id) ?? 0,
     }),
   );
@@ -180,6 +194,7 @@ export async function createProduct(db: PrismaClient, input: ProductInput) {
             baseUnit: input.baseUnit,
             categoryId,
             reorderPoint: input.reorderPoint,
+            defaultCostBase: input.defaultCostBase == null ? null : new Prisma.Decimal(input.defaultCostBase),
             quantityInStock: 0,
             units: {
               create: input.units.map((unit) => ({
@@ -246,7 +261,7 @@ export async function getProduct(db: PrismaClient, id: string) {
 export async function updateProduct(
   db: PrismaClient,
   id: string,
-  input: { name?: string; categoryId?: string; reorderPoint?: number },
+  input: { name?: string; categoryId?: string; reorderPoint?: number; defaultCostBase?: string | null },
 ) {
   if (!(await db.product.findUnique({ where: { id }, select: { id: true } })))
     throw missing("Product");
@@ -260,7 +275,10 @@ export async function updateProduct(
     throw missing("Category");
   const product = await db.product.update({
     where: { id },
-    data: input,
+    data: {
+      ...input,
+      ...(input.defaultCostBase !== undefined ? { defaultCostBase: input.defaultCostBase === null ? null : new Prisma.Decimal(input.defaultCostBase) } : {}),
+    },
     select: productSelect,
   });
   return (await shapeProductStock(db, [product]))[0]!;
@@ -274,7 +292,16 @@ const unitSelect = {
   multiplier: true,
   price: true,
   sku: true,
+  product: { select: { defaultCostBase: true, lastReceivedCostBase: true } },
 };
+function shapeUnitCost(unit: Prisma.ProductUnitGetPayload<{ select: typeof unitSelect }>) {
+  const { product, ...rest } = unit;
+  return {
+    ...rest,
+    defaultCostInUnit: product.defaultCostBase?.times(unit.multiplier).toFixed(4) ?? null,
+    lastReceivedCostInUnit: product.lastReceivedCostBase?.times(unit.multiplier).toFixed(4) ?? null,
+  };
+}
 export async function createUnit(
   db: PrismaClient,
   productId: string,
@@ -287,7 +314,7 @@ export async function createUnit(
     }))
   )
     throw missing("Product");
-  return controlled(
+  return shapeUnitCost(await controlled(
     () =>
       db.productUnit.create({
         data: {
@@ -299,7 +326,7 @@ export async function createUnit(
         select: unitSelect,
       }),
     "SKU or product unit name already exists.",
-  );
+  ));
 }
 
 export async function listUnits(db: PrismaClient, productId: string) {
@@ -310,11 +337,12 @@ export async function listUnits(db: PrismaClient, productId: string) {
     }))
   )
     throw missing("Product");
-  return db.productUnit.findMany({
+  const units = await db.productUnit.findMany({
     where: { productId },
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: unitSelect,
   });
+  return units.map(shapeUnitCost);
 }
 export async function getUnit(
   db: PrismaClient,
@@ -326,7 +354,7 @@ export async function getUnit(
     select: unitSelect,
   });
   if (!unit) throw missing("Product unit");
-  return unit;
+  return shapeUnitCost(unit);
 }
 export async function updateUnit(
   db: PrismaClient,
@@ -341,7 +369,7 @@ export async function updateUnit(
     }))
   )
     throw missing("Product unit");
-  return controlled(
+  return shapeUnitCost(await controlled(
     () =>
       db.productUnit.update({
         where: { id: unitId },
@@ -353,7 +381,7 @@ export async function updateUnit(
         select: unitSelect,
       }),
     "SKU or product unit name already exists.",
-  );
+  ));
 }
 
 export async function createWarehouse(

@@ -140,6 +140,7 @@ export async function createV2PurchaseOrder(
         }
         const units = await tx.productUnit.findMany({
           where: { id: { in: input.items.map((item) => item.unitId) } },
+          include: { product: { select: { defaultCostBase: true } } },
         });
         const byId = new Map(units.map((unit) => [unit.id, unit]));
         let total = new Decimal(0);
@@ -149,7 +150,10 @@ export async function createV2PurchaseOrder(
             throw new PostingInvariantError(
               "Purchase unit does not belong to the selected product.",
             );
-          const cost = new Decimal(item.agreedUnitCost ?? unit.price);
+          const cost = item.agreedUnitCost === undefined
+            ? unit.product.defaultCostBase?.times(unit.multiplier)
+            : new Decimal(item.agreedUnitCost);
+          if (!cost) throw new PostingInvariantError("Enter an agreed unit cost or set a default base-unit cost for this product.");
           const lineTotal = cost.times(item.quantityOrdered);
           total = total.plus(lineTotal);
           return { item, unit, cost, lineTotal };
@@ -473,6 +477,7 @@ export async function postPurchaseReceipt(
             }
             const movements: MovementInput[] = [];
             const productTotals = new Map<string, number>();
+            const receiptCosts = new Map<string, Decimal>();
             let sequence = 1;
             for (const line of receipt.items) {
               const batch = await tx.inventoryBatch.create({
@@ -483,6 +488,7 @@ export async function postPurchaseReceipt(
                   expiryDate: line.expiryDate,
                   receivedAt: receipt.receivedAt,
                   quantityOnHandBase: line.quantityBase,
+                  unitCostBase: line.actualUnitCost.dividedBy(line.unitMultiplier).toDecimalPlaces(8),
                   disposition: "SELLABLE",
                   purchaseReceiptItemId: line.id,
                 },
@@ -500,6 +506,10 @@ export async function postPurchaseReceipt(
                 batch.productId,
                 (productTotals.get(batch.productId) ?? 0) + line.quantityBase,
               );
+              receiptCosts.set(
+                batch.productId,
+                (receiptCosts.get(batch.productId) ?? new Decimal(0)).plus(line.actualUnitCost.times(line.quantityInOrderUnit)),
+              );
             }
             for (const [purchaseItemId, quantityInOrderUnit] of currentByItem)
               await tx.purchaseItem.update({
@@ -509,7 +519,10 @@ export async function postPurchaseReceipt(
             for (const [productId, quantity] of productTotals) {
               await tx.product.update({
                 where: { id: productId },
-                data: { quantityInStock: { increment: quantity } },
+                data: {
+                  quantityInStock: { increment: quantity },
+                  lastReceivedCostBase: receiptCosts.get(productId)!.dividedBy(quantity).toDecimalPlaces(4),
+                },
               });
             }
             await tx.purchaseReceipt.update({

@@ -12,6 +12,7 @@ export type OpeningStockInput = {
     unitId: number;
     warehouseId: number;
     quantityInUnit: number;
+    unitCostInUnit?: string | number;
     expiryDate?: string | null;
   }>;
 };
@@ -22,6 +23,7 @@ type OpeningLine = {
   warehouse: { id: number; name: string };
   quantityInUnit: number;
   quantityBase: number;
+  unitCostBase: string | null;
   expiryDate: string | null;
   resultingProductSellableCache: number;
   batchId: string;
@@ -207,6 +209,7 @@ export async function recordOpeningStock(
           productId: product.id,
           warehouseId: warehouse.id,
           quantityOnHandBase: quantityByLine[index]!,
+          unitCostBase: line.unitCostInUnit === undefined ? null : new Prisma.Decimal(line.unitCostInUnit).dividedBy(unit.multiplier).toDecimalPlaces(8),
           disposition: "SELLABLE",
           expiryDate: line.expiryDate ? new Date(`${line.expiryDate}T00:00:00.000Z`) : null,
           receivedAt: recordedAt,
@@ -219,6 +222,7 @@ export async function recordOpeningStock(
         warehouse,
         quantityInUnit: line.quantityInUnit,
         quantityBase: quantityByLine[index]!,
+        unitCostBase: line.unitCostInUnit === undefined ? null : new Prisma.Decimal(line.unitCostInUnit).dividedBy(unit.multiplier).toFixed(8),
         expiryDate: line.expiryDate,
         resultingProductSellableCache: product.quantityInStock + totalByProduct.get(product.id)!,
         batchId: batch.id,

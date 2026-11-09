@@ -55,6 +55,7 @@ export const createProductSchema = z
     categoryId: uuid.optional(),
     newCategoryName: name.optional(),
     reorderPoint: nonnegativeInt.default(0),
+    defaultCostBase: money.nullable().optional(),
     units: z.array(unitInputSchema).min(1).max(100),
   })
   .strict()
@@ -97,6 +98,7 @@ export const updateProductSchema = nonEmptyPatch({
   name: name.optional(),
   categoryId: uuid.optional(),
   reorderPoint: nonnegativeInt.optional(),
+  defaultCostBase: money.nullable().optional(),
 });
 
 export const createUnitSchema = unitInputSchema;
